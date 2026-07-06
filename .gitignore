@@ -1,0 +1,6 @@
+# Exclude reference PDB files used for homology modeling
+REC_WAT/
+*.pdb
+
+# Python cache
+__pycache__/

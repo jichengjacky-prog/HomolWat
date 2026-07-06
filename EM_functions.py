@@ -8,7 +8,15 @@ import math
 from subprocess import check_output
 
 ## insert path were blast+ is installed
-path_blast = "/path/to/blast/" + "bin/"
+import os as _os
+_path_blast = "/share/pkg/ncbi-blast/2.15.0+/bin/"
+if not _os.path.isdir(_path_blast):
+    # fallback: try to find blast+ in PATH
+    import subprocess as _sp
+    try:
+        _path_blast = _os.path.dirname(_sp.check_output(['which','makeblastdb']).decode().strip()) + '/'
+    except Exception:
+        _path_blast = ''
 
 aa = {
     "ALA": "A",
@@ -155,14 +163,14 @@ def run_blastp(fasta_in, path_scripts, path_out):
             info_unips[unip] = pdbs
             unipsWithwat.append(unip)
     blast1 = check_output(
-        path_blast
+        _path_blast
         + "blastp -db "
         + path_db  # path were files ref_gpcr.phr, ref_gpcr.pin and ref_gpcr.psq are located
         + "ref_gpcr -query "
         + fasta_in
         + ' -outfmt "10 sseqid score pident qcovs evalue" -evalue 100 ',
         shell=True,
-    ).split("\n")
+    ).decode().split("\n")
     rec_sorted_list = []
     tmp_rec_list = []
     for rec in blast1:
@@ -241,12 +249,12 @@ def run_blastp_chains(fasta_in, path_scripts, path_out):
             unipsWithwat.append(unip)
     # run blast
     blast2 = check_output(
-        path_blast
+        _path_blast
         + "blastp -db "
         + path_db  # path were files ref_gpcr.phr, ref_gpcr.pin and ref_gpcr.psq are located
         + "ref_gpcr -query "
         + fasta_in
         + ' -outfmt "10 sseqid evalue" -evalue 100 ',
         shell=True,
-    ).split("\n")
+    ).decode().split("\n")
     return blast2

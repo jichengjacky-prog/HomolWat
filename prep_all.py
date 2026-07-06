@@ -97,7 +97,7 @@ shutil.copy(path_scripts + "Pdbs_resol_INACT", path_newReq + "/Pdbs_resol_L")
 
 # Get fasta of gpcr MODEL
 
-pdb2fasta_save(f_r, path_HW)
+pdb2fasta_save(f_r, path_HW + "/")
 
 # separate ATOMS and HETATM and save header and cryst1
 pdb_info_lines = []
@@ -239,7 +239,7 @@ if wat_ion != []:
 # RUN BLASTP to get the order of receptors
 # extracts the list of sorted receptores (por orden filogenetico)
 
-fasta_in = path_HW + "/HWprot.fasta"
+fasta_in = path_HW + "/prot.fasta"
 path2save = path_newReq + "/"
 path_wd = path_prev + "scripts/"
 run_blastp(fasta_in, path_wd, path2save)
