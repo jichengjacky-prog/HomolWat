@@ -16,9 +16,18 @@ aa_nonStd = {
     "HIE": "HIS",
     "HID": "HIS",
     "HIP": "HIS",
+    # CHARMM protonation-state names (what this pipeline's own builds emit)
+    "HSD": "HIS",
+    "HSE": "HIS",
+    "HSP": "HIS",
     "CYX": "CYS",
     "CYP": "CYS",
+    "CYM": "CYS",
     "ASH": "ASP",
+    "LYN": "LYS",
+    "LYR": "LYS",
+    "AR0": "ARG",
+    "TYM": "TYR",
     "MSE": "MET",
 }
 

@@ -38,6 +38,55 @@ def chunklist(pdb_paths, parts):
     return out_lists
 
 
+def refine_water(pdbID, wat, f_out_rmsd_wats):
+    """Locally align one crystal water onto the model and save its refined pose.
+
+    Returns True when the water was placed.  A PyMOL failure (normally an empty
+    ``template`` selection for waters at the edge of the reference structure)
+    returns False so the caller can keep going: one bad water must not abort the
+    whole reference set.
+    """
+    watnum = wat[22:27].strip()
+    cmd.do(
+        "select wat_env, byres "
+        + pdbID
+        + " within 10 of (resi "
+        + watnum
+        + " and resn HOH and "
+        + pdbID
+        + ")"
+    )
+    cmd.create("wat_out", "wat_env")
+    cmd.do("save " + pdbID + "_wat_" + watnum + ".pdb, wat_out")
+    cmd.do("load " + pdbID + "_wat_" + watnum + ".pdb")
+    cmd.do("select wat2ref, resi " + watnum + " and " + pdbID + "_wat_" + watnum)
+    if cmd.count_atoms("wat2ref") == 0:
+        # The water did not survive the save/load round trip.
+        return False
+    cmd.do("select template, byres wat2ref around 10 and protein")
+    rmsd_wat = 99.0
+    if cmd.count_atoms("template and name CA") > 0:
+        try:
+            rmsd_wat = cmd.super(
+                pdbID + "_wat_" + watnum + " and name CA", "template and name CA"
+            )[0]
+        except Exception:
+            # `super` needs a sequence match; fall back to a plain alignment.
+            try:
+                rmsd_wat = cmd.align(
+                    pdbID + "_wat_" + watnum + " and name CA", "template and name CA"
+                )[0]
+            except Exception:
+                rmsd_wat = 99.0
+    # Always emit both the refined water and its RMSD row: stage 3 expects one
+    # of each for every water it collected from the reference.
+    info_wat = pdbID + " HOH " + watnum + " " + ("%.3f" % rmsd_wat) + "\n"
+    f_out_rmsd_wats.write(info_wat)
+    cmd.create("watrefined", "wat2ref")
+    cmd.do("save water_" + watnum + "_" + pdbID + ".pdb, watrefined")
+    return True
+
+
 def superimpose(listapdbs):
     """ make global and local alignments for each structure in listapdbs"""
     path_req = listapdbs.pop()
@@ -46,7 +95,7 @@ def superimpose(listapdbs):
     # Save information of Global RMSD
     f_out_rmsd = open(path_req + "info_rmsds.txt", "a+")
 
-    allres = "ALA+ARG+ASP+GLU+THR+TYR+HIS+LEU+ILE+VAL+PRO+GLY+TRP+LYS+PHE+ASN+GLN+MET+CYS+SER+ACE+NH2+DI7+DI8"
+    allres = "ALA+ARG+ASP+GLU+THR+TYR+HIS+HSD+HSE+HSP+HID+HIE+HIP+LEU+ILE+VAL+PRO+GLY+TRP+LYS+PHE+ASN+GLN+MET+CYS+SER+ACE+NH2+DI7+DI8"
     wat_ions = "HOH+NA"
     watPDBs = []
     wat_pdbs_file = open(path_req + "Pdbs_resol_L", "r")
@@ -70,12 +119,16 @@ def superimpose(listapdbs):
 
     for pdb in sorted(listapdbs):
         # FILTER CRYSTALS WITH INTERNAL WATERS (Pdbs_resol_L)
-        pdbname = pdb[len(path_recWat) : len(path_recWat) + 4]
-        unipcode = pdb[len(path_recWat) + 7 : -4]
-        pdbID = pdb[len(path_recWat) : -4]
+        # Reference files are named <pdbid>_<chain>_<receptor>.pdb upstream;
+        # the local wrapper caches them as <pdbid>_<receptor>.pdb.  Accept both.
+        stem = pdb[len(path_recWat) : -4]
+        fields = stem.split("_")
+        pdbname = fields[0]
+        unipcode = fields[-1]
+        file_chain = fields[1] if len(fields) >= 3 else ""
+        pdbID = stem
+        pdb_chain = pdbID[:6]  # e.g. "5WQC_A", kept for the RMSD log
         if pdbname in watPDBs and unipcode in allowed_uniprots:
-            pdbname = pdb[len(path_recWat) : len(path_recWat) + 4]
-            pdbID = pdb[len(path_recWat) : -4]
             waters = []
             f_in = open(pdb, "r")
             f_r = f_in.readlines()
@@ -97,8 +150,13 @@ def superimpose(listapdbs):
             rms_data_align = cmd.align(pdbID, "protein")
             rms_super = rms_data_super[0]
             rms_align = rms_data_align[0]
-            pdb_chain = pdb[len(path_recWat) : len(path_recWat) + 6]
-            chain = pdb_chain[-1]
+            if file_chain:
+                chain = file_chain
+            else:
+                # No chain encoded in the filename: take it from the
+                # reference's own protein CA atoms.
+                ref_chains = cmd.get_chains(pdbID + " and name CA")
+                chain = ref_chains[0] if ref_chains else ""
             if rms_super > rms_align:
                 rmsd_val = "%.3f" % rms_align
                 info = pdb_chain + " " + str(rmsd_val) + " ALIGN\n"
@@ -116,38 +174,15 @@ def superimpose(listapdbs):
             for wat in waters:
                 watnum = wat[22:27].strip()
                 chain_wat = wat[21:22].strip()
-                if chain_wat == chain:
-                    cmd.do(
-                        "select wat_env, byres "
-                        + pdbID
-                        + " within 10 of (resi "
-                        + watnum
-                        + " and resn HOH and "
-                        + pdbID
-                        + ")"
+                if chain_wat != chain:
+                    continue
+                try:
+                    refine_water(pdbID, wat, f_out_rmsd_wats)
+                except Exception as exc:
+                    print(
+                        "WARNING: water %s of %s could not be refined: %s"
+                        % (watnum, pdbID, exc)
                     )
-                    cmd.create("wat_out", "wat_env")
-                    cmd.do("save " + pdbID + "_wat_" + watnum + ".pdb, wat_out")
-                    cmd.do("load " + pdbID + "_wat_" + watnum + ".pdb")
-                    cmd.do(
-                        "select wat2ref, resi "
-                        + watnum
-                        + " and "
-                        + pdbID
-                        + "_wat_"
-                        + watnum
-                    )
-                    cmd.do("select template, byres wat2ref around 10 and protein")
-                    rmsd_wat_super = cmd.super(
-                        pdbID + "_wat_" + watnum + " and name CA",
-                        "template and name CA",
-                    )
-                    rmsd_wat = rmsd_wat_super[0]
-                    value_rmsd = "%.3f" % rmsd_wat
-                    info_wat = pdbID + " HOH " + watnum + " " + str(value_rmsd) + "\n"
-                    f_out_rmsd_wats.write(info_wat)
-                    cmd.create("watrefined", "wat2ref")
-                    cmd.do("save water_" + watnum + "_" + pdbID + ".pdb, watrefined")
 
 
 ## Determinar variables fijas, paths, etc
@@ -155,17 +190,23 @@ req_num = sys.argv[3]  # name of specific folder of the process
 path = sys.argv[4]  # path where the above folder is located
 
 path_req = path + req_num + "/"
-path_recWat = (
-    path[:-8] + "REC_WAT/"
-)  # path where crystals with internal waters are located
+# Directory holding the crystal structures with resolved internal waters.
+# Prefer the explicit argument passed by the caller (argv[5]).  The historical
+# `path[:-8] + "REC_WAT/"` derivation only resolves when the jobs directory has
+# a particular leaf name; for any other layout it silently globs zero
+# references and no waters are ever transferred.
+path_recWat = path[:-8] + "REC_WAT/"
+if len(sys.argv) > 5 and os.path.isdir(sys.argv[5]):
+    path_recWat = sys.argv[5].rstrip("/") + "/"
 
 
 startTime = datetime.now()
 
 
-# Specify number of CPUs used --> if this value changes
-# you have to modify  the lines below in accordance
-num_cpus = 8
+# Specify number of CPUs used.  PyMOL's C state is not fork-safe, so the
+# worker pool can lose processes part-way through a run; export
+# HOMOLWAT_CPUS=1 to run the alignments sequentially when that happens.
+num_cpus = max(1, int(os.environ.get("HOMOLWAT_CPUS", "8")))
 
 folder_RW = glob.glob(path_recWat + "*.pdb")
 
@@ -181,33 +222,17 @@ if len(folder_RW) > 10:
     for partial_list in div_pathsRW:
         partial_list.append(path_recWat)
         partial_list.append(path_req)
-    pathsRW1, pathsRW2, pathsRW3, pathsRW4 = (
-        div_pathsRW[0],
-        div_pathsRW[1],
-        div_pathsRW[2],
-        div_pathsRW[3],
-    )
-    pathsRW5, pathsRW6, pathsRW7, pathsRW8 = (
-        div_pathsRW[4],
-        div_pathsRW[5],
-        div_pathsRW[6],
-        div_pathsRW[7],
-    )
-    # execute in multiprocess
-    pool = Pool(processes=num_cpus)
-    pool.map(
-        superimpose,
-        [
-            pathsRW1,
-            pathsRW2,
-            pathsRW3,
-            pathsRW4,
-            pathsRW5,
-            pathsRW6,
-            pathsRW7,
-            pathsRW8,
-        ],
-    )
+    if num_cpus == 1:
+        for partial_list in div_pathsRW:
+            superimpose(partial_list)
+    else:
+        # execute in multiprocess
+        pool = Pool(processes=num_cpus)
+        try:
+            pool.map(superimpose, div_pathsRW)
+        finally:
+            pool.close()
+            pool.join()
 else:
     folder_RW.append(path_recWat)
     folder_RW.append(path_req)

@@ -42,6 +42,9 @@ aa3 = [
     "LYS",
     "ARG",
     "HIS",
+    "HSD",
+    "HSE",
+    "HSP",
     "MSE",
     "ACE",
     "NME",
@@ -51,7 +54,11 @@ aa3 = [
     "HIP",
     "CYX",
     "CYP",
+    "CYM",
     "ASH",
+    "LYN",
+    "AR0",
+    "TYM",
 ]
 
 

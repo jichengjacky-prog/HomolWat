@@ -21,9 +21,12 @@ if not _os.path.isdir(_path_blast):
 aa = {
     "ALA": "A",
     "ARG": "R",
+    "AR0": "R",
     "LEU": "L",
     "MET": "M",
     "LYS": "K",
+    "LYN": "K",
+    "LYR": "K",
     "GLN": "Q",
     "GLU": "E",
     "GLH": "E",
@@ -31,17 +34,23 @@ aa = {
     "TRP": "W",
     "SER": "S",
     "TYR": "Y",
+    "TYM": "Y",
     "PHE": "F",
     "VAL": "V",
     "HIS": "H",
     "HIE": "H",
     "HID": "H",
     "HIP": "H",
+    # CHARMM protonation-state names (what this pipeline's own builds emit)
+    "HSD": "H",
+    "HSE": "H",
+    "HSP": "H",
     "ASN": "N",
     "THR": "T",
     "CYS": "C",
     "CYX": "C",
     "CYP": "C",
+    "CYM": "C",
     "ASP": "D",
     "ASH": "D",
     "GLY": "G",
@@ -68,7 +77,19 @@ def pdb2fasta_save(pdb_file, path2save):
             tipo = line[12:16].strip()
             if tipo == "CA":
                 resn = str(line[17:20])
-                resi = int(line[23:26])
+                resi_field = line[22:26].strip()
+                if resi_field:
+                    resi = int(resi_field)
+                else:
+                    # Some cleaned PDBs have blank residue numbers. Treat
+                    # each CA as the next residue so a FASTA sequence can
+                    # still be generated instead of crashing.
+                    resi = reso + 1
+                    reso = resi
+                    count += 1
+                    if count == 72:
+                        fout.write("\n")
+                        count = 0
                 if resi != reso:
                     reso = resi
                     count += 1
@@ -94,7 +115,19 @@ def pdb2fasta_chains(pdb_file, pdbname, chain, path2save):
             if chain == ch:
                 if tipo == "CA":
                     resn = str(line[17:20])
-                    resi = int(line[23:26])
+                    resi_field = line[22:26].strip()
+                    if resi_field:
+                        resi = int(resi_field)
+                    else:
+                        # Some cleaned PDBs have blank residue numbers. Treat
+                        # each CA as the next residue so a FASTA sequence can
+                        # still be generated instead of crashing.
+                        resi = reso + 1
+                        reso = resi
+                        count += 1
+                        if count == 72:
+                            fout.write("\n")
+                            count = 0
                     if resi != reso:
                         reso = resi
                         count += 1

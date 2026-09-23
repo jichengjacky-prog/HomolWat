@@ -155,9 +155,15 @@ for receptor in Recs_resol:
                     water_chain = w2[21:22].strip()
                     if water_chain == repli:
                         # openfile of refined wat and save to list
-                        water_ref_file = open(
-                            path_rw + "water_" + watnum + "_" + pdbID + ".pdb", "r"
+                        water_ref_path = (
+                            path_rw + "water_" + watnum + "_" + pdbID + ".pdb"
                         )
+                        # Stage 2 may legitimately skip a water (e.g. it did not
+                        # survive the save/load round trip), so tolerate gaps
+                        # instead of aborting the whole run.
+                        if not file_exist(water_ref_path) or watnum not in Rmsd_water:
+                            continue
+                        water_ref_file = open(water_ref_path, "r")
                         water_line = water_ref_file.readlines()
                         water_ref_file.close()
                         new_wat_line = (
